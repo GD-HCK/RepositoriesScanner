@@ -1,4 +1,35 @@
-$env:TERM = "xterm-256color"
+[CmdletBinding()]
+param (
+    [Parameter(Mandatory)]
+    [string]$GITHUB_API_URL = "https://api.github.com",
+    [Parameter(Mandatory)]
+    [string[]]$ApiFilters,
+    [Parameter(Mandatory)]
+    [string]$Languages,
+    [Parameter(Mandatory)]
+    [int]$RepositorySearchLimit,
+    [Parameter(Mandatory)]
+    [int]$RepositoriesToCompile,
+    [Parameter(Mandatory)]
+    [int]$LinesOfCodeForBlackList,
+    [Parameter(Mandatory)]
+    [string]$RootDirectory
+)
+
+# Main script
+# Set the GitHub API URL and the Personal Access Token
+$Token = $ENV:ACCESSTOKEN
+
+if (-not $Token) {
+    Write-Error "Valid GitHub Personal Access Token required"
+    break
+}
+
+# Set the headers for the API requests
+$headers = @{
+    "Accept"        = "application/vnd.github.v3+json"
+    "Authorization" = "token $token"  # Uncomment if authentication is needed
+}
 
 # Function to write console output with colors
 function Write-GitHubOutput {
@@ -9,6 +40,7 @@ function Write-GitHubOutput {
         [switch]$NoNewline
     )
 
+    $env:TERM = "xterm-256color"
     # Define ANSI escape codes for colors
     $Red = "`e[31m"
     $Cyan = "`e[36m"
@@ -132,37 +164,60 @@ function Invoke-FileScanner {
     $counter = 0
 
     while ($true) {
-        $scanResult = Invoke-RestMethod -Uri "https://tip.neiki.dev/api/reports/file/$reportId" `
-            -Headers $headers `
-            -Method GET
+        try {
+            $scanResult = Invoke-RestMethod -Uri "https://tip.neiki.dev/api/reports/file/$reportId" `
+                -Headers $headers `
+                -Method GET
 
-        if ($scanResult.pending -or $scanResult.queued) {
-            if ($counter % 60 -eq 0) {
-                if ($scanResult.pending) {
-                    Write-GitHubOutput "    --> Scan is pending" -Color Yellow
+            if ($scanResult.pending -or $scanResult.queued) {
+                if ($counter % 60 -eq 0) {
+                    if ($scanResult.pending) {
+                        Write-GitHubOutput "    --> Scan is pending" -Color Yellow
+                    }
+                    elseif ($scanResult.queued) {
+                        Write-GitHubOutput "    --> Scan is queued" -Color Yellow
+                    }
                 }
-                elseif ($scanResult.queued) {
-                    Write-GitHubOutput "    --> Scan is queued" -Color Yellow
-                }
-            }
-            Start-Sleep -Seconds 1
-            $counter++
-        }
-        else {
-            if ($scanResult.report.verdict -eq "MALICIOUS") {
-                Write-GitHubOutput "    --> Scan completed with result: $($scanResult.report.verdict)" -Color Red
-                $obj.Report = $scanResult.report
-            }
-            elseif ($scanResult.report.verdict -eq "SUSPICIOUS") {
-                Write-GitHubOutput "    --> Scan completed with result: $($scanResult.report.verdict)" -Color Yellow
-                $obj.Report = $scanResult.report
+                Start-Sleep -Seconds 1
+                $counter++
             }
             else {
-                Write-GitHubOutput "    --> Scan completed with result: $($scanResult.report.verdict)" -Color Green
-                $obj.IsSafe = $true
-                $obj.Report = $scanResult.report
+                if ($scanResult.report.verdict -eq "MALICIOUS") {
+                    Write-GitHubOutput "    --> Scan completed with result: $($scanResult.report.verdict)" -Color Red
+                    $obj.Report = $scanResult.report
+                }
+                elseif ($scanResult.report.verdict -eq "SUSPICIOUS") {
+                    Write-GitHubOutput "    --> Scan completed with result: $($scanResult.report.verdict)" -Color Yellow
+                    $obj.Report = $scanResult.report
+                }
+                else {
+                    Write-GitHubOutput "    --> Scan completed with result: $($scanResult.report.verdict)" -Color Green
+                    $obj.IsSafe = $true
+                    $obj.Report = $scanResult.report
+                }
+                break
             }
-            break
+        }
+        catch {
+            $errorMsgjson = $_
+            try {
+                $errorMsg = $errorMsgjson | ConvertFrom-Json
+                if ($errorMsg.status -eq "ITEM_NOT_FOUND") {
+                    Write-GitHubOutput "    --> $($errorMsg.error)" -Color Yellow
+                }
+                else {
+                    Write-GitHubOutput "    --> $($errorMsgjson)" -Color Red
+                    $obj.IsSafe = $false
+                    $obj.Report = $errorMsgjson
+                    return $obj
+                }
+            }
+            catch {
+                Write-GitHubOutput "    --> Failed to retrieve file $($reportId): $($_.Exception.Message)" -Color Red
+                $obj.IsSafe = $false
+                $obj.Report = "Failed to retrieve file $($reportId): $($_.Exception.Message)"
+                return $obj
+            }
         }
     }
 
@@ -562,45 +617,6 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
     return $obj
 }
 
-# Main script
-# Set the GitHub API URL and the Personal Access Token
-$GITHUB_API_URL = "https://api.github.com"
-$Token = $ENV:ACCESSTOKEN
-
-if (-not $Token) {
-    Write-Error "Valid GitHub Personal Access Token required"
-    break
-}
-
-# Set the headers for the API requests
-$headers = @{
-    "Accept"        = "application/vnd.github.v3+json"
-    "Authorization" = "token $token"  # Uncomment if authentication is needed
-}
-
-# Set the filters for the repositories search
-[string[]]$Apifilters = @(
-    # "AntiVM"
-    "Windows"
-    "is:public"
-    # "disabled:False"
-    # "archived:false"
-)
-
-# Set the languages to search for
-$languages = @("Python", "C++", "Go", "C", "Rust")
-
-# Set how many repositories to return per search
-$RepositorySearchLimit = 200
-
-# Set how many repositories to compile (this will not include any previous successful builds)
-$RepositoriesToCompile = 10
-
-# Set how many lines of code to check for blacklisted repositories
-$LinesOfCodeForBlackList = 10
-
-# Set the root directory for the script
-$rootDirectory = "C:\RepoScannerFiles"
 $publishedArtifacts = "$rootDirectory\Artifacts"
 $SuccessfulBuildsPath = "$rootDirectory\SuccessfulBuilds.json"
 $FailedBuildsPath = "$rootDirectory\FailedBuilds.json"

@@ -55,11 +55,14 @@ jobs:
           Copy-Item -Path "$repoDir\.github\*.json" -Destination "C:\RepoScannerFiles\" -Force -Verbose
         shell: pwsh
 
-      - name: Run scan repositories script
-        env:
-          ACCESSTOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: .\scripts\Scan-PublicGitHubRepositories.ps1
-        shell: pwsh
+      - uses: ./.github/workflows/scan-repositories-template.yml
+        with:
+          apifilters:  Windows, is:public
+          languages: Python,C++,Go,C,Rust
+          repositorySearchLimit: 200
+          repositoriesToCompile: 10
+          linesOfCodeForBlackList: 10
+          rootDirectory: C:\RepoScannerFiles
 
       - name: Upload build artifacts
         if: always()

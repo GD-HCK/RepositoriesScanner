@@ -1,0 +1,58 @@
+# .github/workflows/scan-repositories-template.yml
+name: Scan Repositories
+
+on:
+  workflow_call:
+    inputs:
+      apifilters:
+        required: true
+        type: string
+      languages:
+        required: true
+        type: string
+      repositorysearchlimit:
+        required: true
+        type: number
+      repositoriestocompile:
+        required: true
+        type: number
+      linesofcodeforblacklist:
+        required: true
+        type: number
+      rootdirectory:
+        required: true
+        type: string
+
+jobs:
+  scan-and-build:
+    runs-on: windows-latest
+    steps:
+        - name: Run scan repositories script
+          env:
+            ACCESSTOKEN: ${{ secrets.GITHUB_TOKEN }}
+          run: |
+            # Set the filters for the repositories search
+            [string[]]$Apifilters = '${{ github.event.inputs.apifilters }}' -split ","
+
+            # Set the languages to search for
+            $languages = '${{ github.event.inputs.languages }}' -split ","
+
+            # Set how many repositories to return per search
+            $RepositorySearchLimit = ${{ github.event.inputs.repositorysearchlimit }}
+
+            # Set how many repositories to compile (this will not include any previous successful builds)
+            $RepositoriesToCompile = ${{ github.event.inputs.repositoriestocompile }}
+
+            # Set how many lines of code to check for blacklisted repositories
+            $LinesOfCodeForBlackList = ${{ github.event.inputs.linesofcodeforblacklist }}
+
+            # Set the root directory for the script
+            $rootDirectory = '${{ github.event.inputs.rootdirectory }}'
+
+            .\scripts\Scan-PublicGitHubRepositories.ps1 `
+                -Apifilters $Apifilters `
+                -languages $languages `
+                -RepositorySearchLimit $RepositorySearchLimit `
+                -RepositoriesToCompile $RepositoriesToCompile `
+                -LinesOfCodeForBlackList $LinesOfCodeForBlackList `
+                -rootDirectory $rootDirectory
