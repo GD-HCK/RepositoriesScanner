@@ -1,0 +1,87 @@
+name: Scan GitHub Repositories and build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  scan-and-build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install PyInstaller globally
+        run: |
+          pip install pyinstaller --upgrade
+          pyinstaller --version
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.x'
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+
+      - name: Install 7zip
+        run: choco install 7zip --no-progress -y
+
+      - name: Install MSYS2
+        run: choco install msys2 --no-progress -y
+
+      - name: Run provisioning script
+        run: .\.scripts\provisioning.ps1
+        shell: pwsh
+
+      - name: Copy Scan Results to pipeline
+        run: |
+          $repoDir = '${{ github.workspace }}'
+          mkdir C:\RepoScannerFiles
+          Copy-Item -Path "$repoDir\.github\*.json" -Destination "C:\RepoScannerFiles\" -Force -Verbose
+        shell: pwsh
+
+      - name: Run scan repositories script
+        env:
+          ACCESSTOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .\scripts\Scan-PublicGitHubRepositories.ps1
+        shell: pwsh
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: C:\RepoScannerFiles\*.json
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $repoDir = '${{ github.workspace }}'
+          Copy-Item -Path C:\RepoScannerFiles\*.json -Destination "$repoDir\.github\workflows" -Force
+          Set-Location -Path $repoDir
+          $B64Pat = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("`:$env:GITHUB_TOKEN"))
+          git -c http.extraHeader="Authorization: Basic $B64Pat" add .
+          git -c http.extraHeader="Authorization: Basic $B64Pat" commit -m "Adding scan results to repository"
+          git -c http.extraHeader="Authorization: Basic $B64Pat" push origin HEAD:main
+        shell: pwsh
