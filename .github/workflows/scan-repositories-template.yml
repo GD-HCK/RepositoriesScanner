@@ -27,8 +27,8 @@ jobs:
   scan-and-build:
     runs-on: windows-latest
     steps:
-        - name: Checkout repository
-          uses: actions/checkout@v4
+        # - name: Checkout repository
+        #   uses: actions/checkout@v4
 
         - name: Run scan repositories script
           env:
