@@ -27,13 +27,18 @@ inputs:
     description: 'Root directory for the script'
     required: true
     type: string
+  accessToken:
+    description: 'Access token for the GitHub API'
+    required: true
+    type: string
 
 runs:
   using: 'composite'
   steps:
     - name: Run scan repositories script
       env:
-        ACCESSTOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ACCESSTOKEN: ${{ inputs.accessToken }}
+      shell: pwsh
       run: |
         # Set the filters for the repositories search
         [string[]]$Apifilters = '${{ inputs.apifilters }}' -split ","
