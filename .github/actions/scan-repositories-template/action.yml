@@ -40,6 +40,7 @@ runs:
         ACCESSTOKEN: ${{ inputs.accessToken }}
       shell: pwsh
       run: |
+        'Expand this section for more information'
         # Set the filters for the repositories search
         [string[]]$Apifilters = '${{ inputs.apifilters }}' -split ","
 
@@ -58,7 +59,7 @@ runs:
         # Set the root directory for the script
         $rootDirectory = '${{ inputs.rootdirectory }}'
 
-        ${{ github.action_path }}\scripts\scan.ps1 `
+        ${{ github.action_path }}\scan.ps1 `
             -Apifilters $Apifilters `
             -languages $languages `
             -RepositorySearchLimit $RepositorySearchLimit `
