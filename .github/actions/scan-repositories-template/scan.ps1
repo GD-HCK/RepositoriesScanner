@@ -5,7 +5,7 @@ param (
     [Parameter(Mandatory)]
     [string[]]$ApiFilters,
     [Parameter(Mandatory)]
-    [string]$Languages,
+    [array]$Languages,
     [Parameter(Mandatory)]
     [int]$RepositorySearchLimit,
     [Parameter(Mandatory)]
