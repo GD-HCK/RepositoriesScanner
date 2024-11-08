@@ -264,7 +264,7 @@ function Invoke-ProjectBuilder {
         language    = $language
         buildStatus = $null
         ScanStatus  = $null
-        reason      = $null
+        reason      = ''
         blacklisted = $null
         artifacts   = $null
     }
@@ -545,7 +545,7 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
             Write-GitHubOutput "    --> Build of $repoName succedeed but scan failed!" -Color Red
         }
         else {
-            $obj.reason = $null
+            $obj.reason = 'Build and scan completed successfully'
             $obj.buildStatus = "BuildSucceeed"
             $obj.ScanStatus = "ScanSucceeded"
             $obj.blacklisted = $false
@@ -594,7 +594,7 @@ $languages = @("Python", "C++", "Go", "C", "Rust")
 $RepositorySearchLimit = 200
 
 # Set how many repositories to compile (this will not include any previous successful builds)
-$RepositoriesToCompile = 3
+$RepositoriesToCompile = 10
 
 # Set how many lines of code to check for blacklisted repositories
 $LinesOfCodeForBlackList = 10
