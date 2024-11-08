@@ -62,7 +62,7 @@ jobs:
           apifilters:  Windows,is:public
           languages: Python,C++,Go,C,Rust
           repositorySearchLimit: 200
-          repositoriesToCompile: 10
+          repositoriesToCompile: 2
           linesOfCodeForBlackList: 10
           rootDirectory: C:\RepoScannerFiles
           accessToken: ${{ secrets.GITHUB_TOKEN }}
