@@ -1,0 +1,62 @@
+# https://docs.github.com/en/actions/sharing-automations/creating-actions/metadata-syntax-for-github-actions
+# .github/actions/scan-repositories-template/action.yml
+name: Scan Repositories
+
+inputs:
+  apifilters:
+    description: 'API filters for the repositories search'
+    required: true
+    type: string
+  languages:
+    description: 'Languages to search for'
+    required: true
+    type: string
+  repositorysearchlimit:
+    description: 'Number of repositories to return per search'
+    required: true
+    type: number
+  repositoriestocompile:
+    description: 'Number of repositories to compile'
+    required: true
+    type: number
+  linesofcodeforblacklist:
+    description: 'Number of lines of code to check for blacklisted repositories'
+    required: true
+    type: number
+  rootdirectory:
+    description: 'Root directory for the script'
+    required: true
+    type: string
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run scan repositories script
+      env:
+        ACCESSTOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Set the filters for the repositories search
+        [string[]]$Apifilters = '${{ inputs.apifilters }}' -split ","
+
+        # Set the languages to search for
+        $languages = '${{ inputs.languages }}' -split ","
+
+        # Set how many repositories to return per search
+        $RepositorySearchLimit = ${{ inputs.repositorysearchlimit }}
+
+        # Set how many repositories to compile (this will not include any previous successful builds)
+        $RepositoriesToCompile = ${{ inputs.repositoriestocompile }}
+
+        # Set how many lines of code to check for blacklisted repositories
+        $LinesOfCodeForBlackList = ${{ inputs.linesofcodeforblacklist }}
+
+        # Set the root directory for the script
+        $rootDirectory = '${{ inputs.rootdirectory }}'
+
+        ${{ github.action_path }}\scripts\scan.ps1 `
+            -Apifilters $Apifilters `
+            -languages $languages `
+            -RepositorySearchLimit $RepositorySearchLimit `
+            -RepositoriesToCompile $RepositoriesToCompile `
+            -LinesOfCodeForBlackList $LinesOfCodeForBlackList `
+            -rootDirectory $rootDirectory
