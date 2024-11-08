@@ -1,5 +1,6 @@
 $env:TERM = "xterm-256color"
 
+# Function to write console output with colors
 function Write-GitHubOutput {
     param (
         [Parameter(Position = 0, Mandatory = $true)]
@@ -33,6 +34,7 @@ function Write-GitHubOutput {
     }
 }
 
+# Function to get top repositories based on filters
 function Get-TopRepositories {
     param (
         [array]$repositoriesToExclude,
@@ -58,6 +60,7 @@ function Get-TopRepositories {
     return $response.items
 }
 
+# Function to get commits for a repository
 function Get-Commits {
     param (
         [string]$repoFullName,
@@ -69,6 +72,7 @@ function Get-Commits {
     return $response[0..($limit - 1)]
 }
 
+# Function to check if a file is safe using tip.neiki.dev for scanning
 function Invoke-FileScanner {
     param (
         [Parameter(Mandatory)]
@@ -165,6 +169,7 @@ function Invoke-FileScanner {
     return $obj
 }
 
+# Function to check if a commit has more than a certain number of lines of code
 function Invoke-CommitChecker {
     param (
         [string]$commitSha,
@@ -183,6 +188,7 @@ function Invoke-CommitChecker {
     return $false
 }
 
+# Function to check if the repository has a workable file structure for building
 function Test-BuildFiles {
     param (
         [string]$WorkingDirectory,
@@ -229,6 +235,7 @@ function Test-BuildFiles {
     return $false
 }
 
+# Function to build the project
 function Invoke-ProjectBuilder {
     param (
         [object]$repo,
@@ -250,6 +257,8 @@ function Invoke-ProjectBuilder {
         $reason = git clone --depth 1 --single-branch --no-tags $repoUrl 2>&1
     }
 
+    # Creating a custom object to store the build status
+
     $obj = [PSCustomObject]@{
         repoUrl     = $repo.clone_url
         language    = $language
@@ -260,6 +269,9 @@ function Invoke-ProjectBuilder {
         artifacts   = $null
     }
 
+    # Check if the repository was cloned successfully
+    # If not, return with the reason
+
     if ($LASTEXITCODE -ne 0) {
         $obj.reason = $reason
         $obj.buildStatus = "CloneFailed"
@@ -268,6 +280,8 @@ function Invoke-ProjectBuilder {
         Write-GitHubOutput "Failed to clone repository $repoName" -Color Red
     }
 
+    # Check if the repository has a typical project structure
+    # If not, return with the reason
     if (Test-BuildFiles -WorkingDirectory $RepoWorkingDirectory -language $language) {
         Write-GitHubOutput "    --> building solution" -Color Yellow
     }
@@ -283,18 +297,26 @@ function Invoke-ProjectBuilder {
 
     Set-Location $RepoWorkingDirectory
 
+    # Set up the safe directory for the git config
     git config --global --add safe.directory $RepoWorkingDirectory
+
+    # Build the project based on the language
 
     switch ($language) {
         "Python" {
-            # pip install pyinstaller
+            # Check for main.py or build.py or setup.py or install.py
+
             [array]$MainPy = (Get-ChildItem -Filter "*.py" | Where-Object { $_.Name -match "main|build|setup|install" }).BaseName `
             | Sort-Object -Property L\ength `
             | Select-Object -First 1
 
+            # If no main.py or build.py or setup.py or install.py found, use the first .py file
             if ($MainPy.Count -eq 0) {
                 $MainPy = (Get-ChildItem -Filter "*.py").BaseName
             }
+
+            # Check if there is a requirements.txt file
+            # If yes, create an environment and install the requirements
 
             Write-GitHubOutput "    --> python -m venv venv" -Color Blue
             $reason = python -m venv venv 2>&1
@@ -314,9 +336,12 @@ function Invoke-ProjectBuilder {
                 $code = $LASTEXITCODE
             }
 
+            # Build the project using pyinstaller
+
             Write-GitHubOutput "    --> pyinstaller --onefile $MainPy.py" -Color Blue
             $reason = pyinstaller --onefile "$MainPy.py" 2>&1 # Assuming main.py is the entry point
 
+            # Deactivate the virtual environment
             Write-GitHubOutput "    --> deactivate" -Color Blue
             deactivate
             $code = $LASTEXITCODE
@@ -324,6 +349,7 @@ function Invoke-ProjectBuilder {
         }
         "C++" {
             # Check if there are any .cpp files in the repository
+            # If yes, build the project using g++
             if (Get-ChildItem $RepoWorkingDirectory -Filter *.cpp) {
                 Write-GitHubOutput "    --> g++ -o main.exe *.cpp" -Color Blue
                 $reason = g++ -o main.exe *.cpp 2>&1
@@ -331,14 +357,19 @@ function Invoke-ProjectBuilder {
                 $artifacts += (Get-Item "$RepoWorkingDirectory\main.exe" -ErrorAction SilentlyContinue).FullName
             }
             else {
-                # Check for .sln or .vcxproj files
+                # Check for .sln files
+                # If yes, build the project using MSBuild
+                # If no, set up vcpkg and build the project using CMake
                 $msbuildFiles = Get-ChildItem $RepoWorkingDirectory -Filter *.sln
 
                 if ($msbuildFiles.Count -eq 0) {
-                    # Set up vcpkg if vcpkg.json exists
-                    $vkpkgRoot = "$RepoWorkingDirectory\vcpkg_clone"
+                    $vkpkgRoot = "$RepoWorkingDirectory\vcpkg"
                     $env:VCPKG_ROOT = $vkpkgRoot
+
+                    # Set up vcpkg if vcpkg.json exists
+
                     if (Test-Path "$RepoWorkingDirectory\vcpkg.json") {
+                        # Clone vcpkg and install the required packages
                         if (Test-Path $vkpkgRoot) {
                             Remove-Item $vkpkgRoot -Recurse -Force
                         }
@@ -358,9 +389,12 @@ function Invoke-ProjectBuilder {
                         if ($LASTEXITCODE -eq 0) { $build = $true }
                     }
 
+                    # If the build failed, remove the build directory and try again
                     if ($code -ne 0) {
+
                         Remove-Item .\build -Recurse -Force -ErrorAction SilentlyContinue
 
+                        # Configure the project with CMake using the toolchain file
                         @"
 # mingw_toolchain.cmake
 
@@ -398,6 +432,10 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
                         Write-GitHubOutput "    --> cmake --build build --config Release" -Color Blue
                         $reason = cmake --build build --config Release 2>&1
                         $code = $LASTEXITCODE
+
+                        # Check if the build was successful
+                        # If yes, get the artifacts
+                        # If no, set the build status to failed
                         if ($LASTEXITCODE -eq 0) {
                             if (Test-Path $vkpkgRoot) {
                                 # Run CMake to configure the project with vcpkg toolchain
@@ -423,6 +461,8 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
         "Go" {
             # Build the Go project and specify the output directory
             $files = (Get-ChildItem $RepoWorkingDirectory -Recurse -Filter "go.mod")
+            # Check if there is a go.mod file
+            # If yes, build the project using go build
             if ($files.Count -gt 0) {
                 foreach ($file in $files) {
                     $dir = $file.Directory.FullName
@@ -434,7 +474,7 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
                     Write-GitHubOutput "    --> go build -o $outputFile" -Color Blue
                     $reason = go build -o $outputFile 2>&1
                     $code = $LASTEXITCODE
-                    $artifacts = (Get-Item $outputFile -ErrorAction SilentlyContinue).FullName
+                    $artifacts += (Get-Item $outputFile -ErrorAction SilentlyContinue).FullName
                 }
             }
             else {
@@ -445,16 +485,20 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
                 Write-GitHubOutput "    --> go build -o $outputFile" -Color Blue
                 $reason = go build -o $outputFile 2>&1
                 $code = $LASTEXITCODE
-                $artifacts = (Get-Item $outputFile -ErrorAction SilentlyContinue).FullName
+                $artifacts += (Get-Item $outputFile -ErrorAction SilentlyContinue).FullName
             }
         }
         "C" {
+            # Check if there are any .c files in the repository
+            # If yes, build the project using gcc
             Write-GitHubOutput "    --> gcc -o `"$RepoWorkingDirectory\Release\$($file.BaseName).exe`" *.c" -Color Blue
             $reason = gcc -o "$RepoWorkingDirectory\Release\$($file.BaseName).exe" *.c 2>&1
             $code = $LASTEXITCODE
-            $artifacts = (Get-ChildItem "$RepoWorkingDirectory\Release\*.exe" -ErrorAction SilentlyContinue).FullName
+            $artifacts += (Get-ChildItem "$RepoWorkingDirectory\Release\*.exe" -ErrorAction SilentlyContinue).FullName
         }
         "Rust" {
+            # Check if there is a Cargo.toml file
+            # If yes, build the project using cargo
             Write-GitHubOutput "    --> cargo build --release" -Color Blue
             $reason = cargo build --release 2>&1
             $code = $LASTEXITCODE
@@ -462,6 +506,12 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
             $artifacts += (Get-Item "$RepoWorkingDirectory\target\release\*.exe" -ErrorAction SilentlyContinue).FullName
         }
     }
+
+    # Check if the build was successful
+    #   --> If no, set the build status to failed
+    #   --> If yes, scan the artifacts
+    #       --> If the scan fails, set the scan status to failed and blacklisted status to true
+    #       --> If the scan is successful, set the scan status to succeeded and blacklisted status to false
 
     if ($code -ne 0) {
         Write-GitHubOutput "    --> Failed to build $repoName [$language]" -Color Red
@@ -506,11 +556,14 @@ set(FREETYPE_INCLUDE_DIR `${FREETYPE_INCLUDE_DIR} CACHE STRING "Freetype include
 
     Set-Location $WorkingDirectory
 
+    # Remove the repository directory
     Remove-Item $RepoWorkingDirectory -Recurse -Force
 
     return $obj
 }
 
+# Main script
+# Set the GitHub API URL and the Personal Access Token
 $GITHUB_API_URL = "https://api.github.com"
 $Token = $ENV:ACCESSTOKEN
 
@@ -519,11 +572,13 @@ if (-not $Token) {
     break
 }
 
+# Set the headers for the API requests
 $headers = @{
     "Accept"        = "application/vnd.github.v3+json"
     "Authorization" = "token $token"  # Uncomment if authentication is needed
 }
 
+# Set the filters for the repositories search
 [string[]]$Apifilters = @(
     # "AntiVM"
     "Windows"
@@ -532,19 +587,30 @@ $headers = @{
     # "archived:false"
 )
 
+# Set the languages to search for
 $languages = @("Python", "C++", "Go", "C", "Rust")
+
+# Set how many repositories to return per search
 $RepositorySearchLimit = 200
+
+# Set how many repositories to compile (this will not include any previous successful builds)
 $RepositoriesToCompile = 3
+
+# Set how many lines of code to check for blacklisted repositories
 $LinesOfCodeForBlackList = 10
+
+# Set the root directory for the script
 $rootDirectory = "C:\RepoScannerFiles"
 $publishedArtifacts = "$rootDirectory\Artifacts"
-$Quarantine = "$rootDirectory\quarantine"
 $SuccessfulBuildsPath = "$rootDirectory\SuccessfulBuilds.json"
 $FailedBuildsPath = "$rootDirectory\FailedBuilds.json"
+
 $AllRepositories = @()
 
+# Set the directories and files to exclude from building
 $FoldersFilesToExclude = @($publishedArtifacts, $SuccessfulBuildsPath, $FailedBuildsPath)
 
+# Create the root directory if it does not exist
 if (-not(Test-Path $rootDirectory)) {
     New-Item $rootDirectory -ItemType Directory | Out-Null
 }
@@ -553,47 +619,63 @@ Set-Location $rootDirectory
 
 Write-GitHubOutput "Cleaning up $rootDirectory" -Color Yellow
 Get-ChildItem $rootDirectory | Where-Object { $_.FullName -notin $FoldersFilesToExclude } | Foreach-Object { Remove-Item -Recurse -Force $_.FullName }
-
 New-Item $publishedArtifacts -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
-New-Item $Quarantine -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
 
-
+# Loop through the languages and search for repositories
 foreach ($language in $languages) {
     $repositoriesToKeep = @()
     $repositoriesToExclude = @()
     try {
+        # Get the top repositories based on the filters
         $repos = Get-TopRepositories `
             -Apifilters $Apifilters `
             -language $language `
             -Limit $RepositorySearchLimit `
             -repositoriesToExclude $repositoriesToExclude
 
-        if (Test-Path $SuccessfulBuildsPath) { $SuccessList = Get-Content $SuccessfulBuildsPath | ConvertFrom-Json }
-        if (Test-Path $FailedBuildsPath) { $FailedList = Get-Content $FailedBuildsPath | ConvertFrom-Json }
-
+        # Loop through the repositories
         foreach ($repo in $repos) {
+
+            # Check if the repository has already been built successfully
+            if (Test-Path $SuccessfulBuildsPath) { $SuccessList = Get-Content $SuccessfulBuildsPath | ConvertFrom-Json }
+
+            # Check if the repository has already failed to build
+            if (Test-Path $FailedBuildsPath) { $FailedList = Get-Content $FailedBuildsPath | ConvertFrom-Json }
+
             Write-GitHubOutput "### $($repo.full_name) ###" -Color Yellow
             if ($repositoriesToKeep.Count -lt $RepositoriesToCompile) {
                 if ($SuccessList -and $SuccessList.repoUrl -contains $repo.clone_url) {
                     Write-GitHubOutput "    --> Skipping $($repo.full_name) as it was already built successfully" -Color Yellow
                     continue
                 }
-                # elseif ($FailedList -and $FailedList.repoUrl -contains $repo.clone_url) {
-                #     Write-GitHubOutput "    --> Skipping $($repo.full_name) as it failed to build" -Color Yellow
-                #     continue
-                # }
+                elseif ($FailedList -and $FailedList.repoUrl -contains $repo.clone_url) {
+                    Write-GitHubOutput "    --> Skipping $($repo.full_name) as it failed to build" -Color Yellow
+                    continue
+                }
+
+                # Get the commits for the repository
                 $repoFullName = $repo.full_name
                 $repoUrl = $repo.html_url
                 $Commits = $null
                 [array]$Commits = Get-Commits -repoFullName $repoFullName -Limit 5
+
+                # Check if the repository has commits
+
                 if ($Commits.Count -gt 0) {
+
                     $GoodCommits = 0
+
+                    # Loop through the commits
+                    # Check if the commit has more than a certain number of lines of code
+                    # If yes, increment the GoodCommits counter
                     foreach ($commit in $Commits) {
                         Write-GitHubOutput "    --> Checking commit $($commit.commit.author.date.ToString("[dd/MM/yyyy HH:ss]")) - $($commit.sha)"
                         if (Invoke-CommitChecker -commitSha $commit.sha -repoFullName $repoFullName -LinesOfCode $LinesOfCodeForBlackList) {
                             $GoodCommits++
                         }
                     }
+
+                    # If the GoodCommits counter is greater than 0, add the repository to the list of repositories to keep
                     if ($GoodCommits -gt 0) {
                         Write-GitHubOutput "    --> Check matched for $repoFullName! " -Color Green
                         $AllRepositories += [PSCustomObject]@{
@@ -619,11 +701,18 @@ foreach ($language in $languages) {
     }
 }
 
+# Loop through the repositories and build them
 foreach ($repo in $AllRepositories) {
     $language = $repo.language
     $WorkingDirectory = "$rootDirectory\$language"
     New-Item $WorkingDirectory -ItemType Directory -ErrorAction SilentlyContinue | Out-Null
+
+    # Build the project
     $BuildResult = Invoke-ProjectBuilder -repo $repo.repository -language $repo.language -WorkingDirectory $WorkingDirectory
+
+    # Check if the build was successful
+    #   --> If yes, add the repository to the successful builds log
+    #   --> If no, add the repository to the failed builds log
     if ($BuildResult.blacklisted) {
         Write-GitHubOutput "    --> Adding failed build to log" -Color Red
         $BuildResult.reason = $BuildResult.reason -join "`n"

@@ -45,7 +45,7 @@ jobs:
         run: choco install msys2 --no-progress -y
 
       - name: Run provisioning script
-        run: .\.scripts\provisioning.ps1
+        run: .\scripts\provisioning.ps1
         shell: pwsh
 
       - name: Copy Scan Results to pipeline
