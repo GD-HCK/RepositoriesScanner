@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param (
-    [Parameter(Mandatory)]
+    [Parameter()]
     [string]$GITHUB_API_URL = "https://api.github.com",
     [Parameter(Mandatory)]
     [string[]]$ApiFilters,
