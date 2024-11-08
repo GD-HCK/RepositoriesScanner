@@ -2,33 +2,42 @@
 name: Scan Repositories
 
 on:
-  workflow_call:
-    inputs:
-      apifilters:
-        required: true
-        type: string
-      languages:
-        required: true
-        type: string
-      repositorysearchlimit:
-        required: true
-        type: number
-      repositoriestocompile:
-        required: true
-        type: number
-      linesofcodeforblacklist:
-        required: true
-        type: number
-      rootdirectory:
-        required: true
-        type: string
+    workflow_call:
+      inputs:
+        apifilters:
+          description: 'API filters for the repositories search'
+          required: true
+          type: string
+        languages:
+          description: 'Languages to search for'
+          required: true
+          type: string
+        repositorysearchlimit:
+          description: 'Number of repositories to return per search'
+          required: true
+          type: number
+        repositoriestocompile:
+          description: 'Number of repositories to compile'
+          required: true
+          type: number
+        linesofcodeforblacklist:
+          description: 'Number of lines of code to check for blacklisted repositories'
+          required: true
+          type: number
+        rootdirectory:
+          description: 'Root directory for the script'
+          required: true
+          type: string
 
 jobs:
   scan-and-build:
     runs-on: windows-latest
     steps:
-        # - name: Checkout repository
-        #   uses: actions/checkout@v4
+        - name: Checkout repository
+          uses: actions/checkout@v4
+
+        - name: Set up PowerShell
+          uses: actions/setup-powershell@v1
 
         - name: Run scan repositories script
           env:
