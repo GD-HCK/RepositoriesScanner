@@ -55,7 +55,7 @@ jobs:
           Copy-Item -Path "$repoDir\.github\*.json" -Destination "C:\RepoScannerFiles\" -Force -Verbose
         shell: pwsh
 
-      - uses: scan-repositories-template.yml
+      - uses: ./scan-repositories-template.yml
         with:
           apifilters:  Windows, is:public
           languages: Python,C++,Go,C,Rust
